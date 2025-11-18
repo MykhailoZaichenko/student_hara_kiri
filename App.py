@@ -32,7 +32,7 @@ check_col, reset_col = predictor.columns(2)
 ai_score, paraphrased_score = predictor.columns(2)
 
 threshold = threshold_col.slider(
-    "Threshold", 0.0, 1.0, 0.6, 0.05, help=constants.threshold_info
+    "Threshold", 0.0, 1.0, 0.5, 0.05, help=constants.threshold_info
 )
 
 check_paraphrase = generate_explanation_col.checkbox(
