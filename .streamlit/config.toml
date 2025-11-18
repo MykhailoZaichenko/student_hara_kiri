@@ -1,8 +1,5 @@
 [theme]
 base="light"
 
-[general]
-python = 3.10
-
 [server]
 enableCORS = true
