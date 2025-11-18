@@ -1,5 +1,6 @@
 absl-py==1.4.0
 altair==4.2.2
+asgiref==3.10.0
 asttokens==2.2.1
 astunparse==1.6.3
 attrs==22.2.0
@@ -18,6 +19,9 @@ contourpy==1.0.7
 cycler==0.11.0
 debugpy==1.6.7
 decorator==5.1.1
+Django==5.2.8
+django-cuser==2017.3.16
+django-tinymce==5.0.0
 entrypoints==0.4
 executing==1.2.0
 filelock==3.11.0
@@ -57,9 +61,11 @@ MarkupSafe==2.1.2
 matplotlib==3.7.1
 matplotlib-inline==0.1.6
 mdurl==0.1.2
+ml_dtypes==0.5.4
 modeltranslation==0.25
 more-itertools==9.1.0
 mpmath==1.3.0
+namex==0.1.0
 nest-asyncio==1.5.6
 networkx==3.1
 nltk==3.8.1
@@ -67,6 +73,7 @@ numba==0.56.4
 numpy==1.23.5
 oauthlib==3.2.2
 opt-einsum==3.3.0
+optree==0.18.0
 packaging==23.0
 pandas==1.5.3
 parso==0.8.3
@@ -98,13 +105,14 @@ requests-oauthlib==1.3.1
 rich==13.3.3
 rsa==4.9
 scikit-image==0.20.0
-scikit-learn==1.2.2
+scikit-learn==1.2.1
 scipy==1.14.1
 semver==2.13.0
 six==1.16.0
 slicer==0.0.7
 smart-open==6.3.0
 smmap==5.0.0
+sqlparse==0.5.3
 st-annotated-text==4.0.0
 stack-data==0.6.2
 streamlit==1.17.0
