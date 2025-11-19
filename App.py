@@ -1,274 +1,189 @@
 import streamlit as st
-import pandas as pd
-# import utils  <-- ПРИБРАЛИ ЗВІДСИ, ЩОБ НЕ БЛОКУВАТИ СТАРТ
-import constants
-import plotly.express as px
-from annotated_text import annotated_text
+import gdown
+import os
+# Необхідний імпорт для роботи з архівами
+import zipfile 
 
-st.set_page_config(page_title="Student hara-kiri", page_icon="👨‍🎓")
-
-st.title("👨‍🎓 Student hara-kiri")
-
-versions = ["Essay", "Short-Text"]
-
-# layout
-intro = st.container()
-select_box_col, space = st.columns(2)
-version = select_box_col.selectbox("Variation", versions, help=constants.version_info)
-st.write("---")
-predictor = st.container()
-text_annotation = st.container()
-chart = st.expander("Probability breakdown by each model")
-explanability = st.expander("Explanability")
-
-# Add introduction
-with intro:
-    st.markdown(constants.introduction_text)
-
-# Set up the predictor layout
-threshold_col, space, generate_explanation_col = predictor.columns(3)
-text_to_check = predictor.text_area("Text to analyze", height=300)
-check_col, reset_col = predictor.columns(2)
-ai_score, paraphrased_score = predictor.columns(2)
-
-threshold = threshold_col.slider(
-    "Threshold", 0.0, 1.0, 0.5, 0.05, help=constants.threshold_info
+# --- Налаштування сторінки ---
+st.set_page_config(
+    page_title="AI Text Detector (BERT, CNN, SVM)",
+    page_icon="🔎",
+    layout="wide",
+    initial_sidebar_state="expanded",
 )
 
-check_paraphrase = generate_explanation_col.checkbox(
-    "Check if text is paraphrased", help=constants.paraphrase_checker_info
-)
-if check_paraphrase:
-    paraphrase_threshold = generate_explanation_col.slider(
-        "Paraphase threshold",
-        0.0,
-        1.0,
-        0.6,
-        0.05,
-        help=constants.paraphrase_threshold_info,
-        key="paraphrase",
-    )
+# --- Налаштування шляхів та ID ---
+# Шляхи до моделей (використовуємо один і той самий каталог)
+MODELS_DIR = './models'
+os.makedirs(MODELS_DIR, exist_ok=True)
 
-generate_explanation = generate_explanation_col.checkbox(
-    "Generate explanation", help=constants.explanation_info
-)
-if generate_explanation:
-    model_selection = "SVM"
-    number_of_features = generate_explanation_col.slider(
-        "Number of features",
-        10,
-        100,
-        20,
-        1,
-        key="explanation",
-        help="Number of features to show in the explanation, the more features, the longer it takes to generate the explanation",
-    )
+# !!! УВАГА: ЗАМІНІТЬ ЦЕЙ PLACEHOLDER НА РЕАЛЬНИЙ ID ВАШОГО ZIP-АРХІВУ CNN !!!
+CNN_MODEL_ZIP_ID = '1JZ7ttaRaY4dLC-VMUNMbh2uTMQHoWUvQ'
+CNN_MODEL_ZIP_FILENAME = "cnn_model.zip"
 
-# variable to check if the text is written by AI
-written_by_ai = False
-no_cyrillic = False
-button_pressed = check_col.button(
-    "Check if written by AI", disabled=len(text_to_check) == 0, type="primary"
-)
+# ID файлів моделей з Google Drive
+MODEL_IDS = {
+    "svm_model": "1_O8mtsgJipuCgqrW1yBoJBUUEYCiUXsx", # svm_linear_model_90000_features_probability.pkl
+    "tfidf_vectorizer": "1HBpIvydoh6slZKwrX4o9hsinGPydwkIi", # tfidf_vectorizer_90000_features.pkl
+    "bert_binary": "1D8wp3sOVV9Ri5BUG26IGVSZoSZlvjobD", # model_bertbase_updated.pt
+    "bert_multiclass": "1GhTr-2ghquSTWdha96s7JJWegx2yoo2t", # model_multiclass.pt
+    "cnn_zip": CNN_MODEL_ZIP_ID, # ID для ZIP-файлу моделі CNN
+}
 
-# --- ЛІНИВЕ ЗАВАНТАЖЕННЯ ---
-# Ми імпортуємо utils тільки ТУТ, після натискання кнопки.
-# Це дозволяє додатку запуститися миттєво, не чекаючи завантаження моделей TensorFlow/BERT.
-if button_pressed:
-    with st.spinner("Initializing models and libraries... (First run may take a while)"):
-        import utils 
+# Шляхи до файлів
+PATHS = {
+    "svm_model": os.path.join(MODELS_DIR, "svm_linear_model_90000_features_probability.pkl"),
+    "tfidf_vectorizer": os.path.join(MODELS_DIR, "tfidf_vectorizer_90000_features.pkl"),
+    "bert_binary": os.path.join(MODELS_DIR, "model_bertbase_updated.pt"),
+    "bert_multiclass": os.path.join(MODELS_DIR, "model_multiclass.pt"),
+    "cnn_zip": os.path.join(MODELS_DIR, CNN_MODEL_ZIP_FILENAME),
+    "cnn_model_dir": os.path.join(MODELS_DIR, "model_autokeras_gltr_trials_8"), # Кінцевий шлях для CNN
+}
+
+# --- Функція для завантаження файлів моделей ---
+def download_models(model_paths):
+    """Завантажує файли моделей з Google Drive, якщо вони відсутні."""
     
-    # Тепер utils доступний, і ми можемо його використовувати
-    no_cyrillic = not utils.has_cyrillic(text_to_check)
+    # Спочатку завантажуємо та обробляємо CNN SavedModel (ZIP)
+    cnn_target_dir = PATHS["cnn_model_dir"]
+    cnn_zip_path = PATHS["cnn_zip"]
+    cnn_zip_id = MODEL_IDS["cnn_zip"]
+    
+    if not os.path.exists(cnn_target_dir) and cnn_zip_id != '1JZ7ttaRaY4dLC-VMUNMbh2uTMQHoWUvQ':
+        with st.empty():
+            st.info("Downloading CNN/GLTR model (SavedModel ZIP)...")
+            try:
+                # 1. Завантаження ZIP
+                gdown.download(f'https://drive.google.com/uc?id={cnn_zip_id}', cnn_zip_path, quiet=False)
+                st.success("CNN ZIP downloaded successfully. Starting extraction...")
+                
+                # 2. Розпакування
+                with zipfile.ZipFile(cnn_zip_path, 'r') as zip_ref:
+                    # Розпаковуємо безпосередньо в каталог models, 
+                    # припускаючи, що cnn_model.zip містить папку model_autokeras_gltr_trials_8
+                    zip_ref.extractall(MODELS_DIR) 
+                
+                # 3. Видалення ZIP-файлу
+                os.remove(cnn_zip_path)
+                st.success(f"CNN/GLTR model extracted and ready at {cnn_target_dir}!")
+                
+            except Exception as e:
+                st.error(f"Error processing CNN model (ZIP/Extraction): {e}. Check if the ZIP file contains the directory 'model_autokeras_gltr_trials_8'.")
+                st.session_state['cnn_error_setup'] = str(e)
+                # Ми не зупиняємо, щоб можна було перевірити інші моделі
+    elif cnn_zip_id == '1JZ7ttaRaY4dLC-VMUNMbh2uTMQHoWUvQ':
+        st.warning("Будь ласка, оновіть App.py з реальним Google Drive ID для моделі CNN.")
 
+    
+    # Тепер завантажуємо інші, поодинокі файли
+    for key in ["svm_model", "tfidf_vectorizer", "bert_binary", "bert_multiclass"]:
+        path = model_paths[key]
+        if key in MODEL_IDS and not os.path.exists(path):
+            with st.empty():
+                try:
+                    st.info(f"Downloading {key}...")
+                    gdown.download(f'https://drive.google.com/uc?id={MODEL_IDS[key]}', path, quiet=False)
+                    st.success(f"{key} downloaded successfully!")
+                except Exception as e:
+                    st.error(f"Error downloading {key}: {e}")
+                    st.session_state[f'{key}_error_setup'] = str(e)
 
-if button_pressed and no_cyrillic and version == versions[0]:
-    # utils вже імпортовано вище
-    with st.spinner("Predicting..."):
-        # check if the text is written by AI
-        written_by_ai, scores, splitted_text = utils.check_if_ai(
-            text_to_check, threshold
-        )
+# --- UI ---
+st.title("🔎 Мультимодельний Детектор Тексту, Згенерованого Штучним Інтелектом (AI)")
 
-        if check_paraphrase:
-            is_paraphrased = utils.check_if_paraphrased(text_to_check)
+text_to_check = st.text_area(
+    "Вставте текст для аналізу:",
+    height=300,
+    value="Це просто звичайний тестовий текст, написаний людиною, щоб перевірити, як працює ваша система виявлення ШІ. Чи зможе вона мене розпізнати?",
+    key="text_input"
+)
 
-        text_annotation.header("Text analysis")
-        # generate the annotated text
-        if not check_paraphrase:
-            annotated_text_data = utils.generate_annotated_text(
-                splitted_text, written_by_ai
-            )
-            with text_annotation:
-                annotated_text(*annotated_text_data)
+st.caption("Система перевіряє текст на оригінальність за допомогою чотирьох різних моделей: SVM/TF-IDF, бінарний BERT, багатокласовий BERT та CNN/GLTR.")
 
-        # generate the chart
-        df = pd.DataFrame.from_dict(scores["Average"], orient="index")
-        fig = px.bar(
-            df,
-            orientation="h",
-            labels={"index": "Model", "value": "Probability"},
-            pattern_shape=df.index,
-            color=df.index,
-        )
-        chart.plotly_chart(fig, use_container_width=True)
+# Кнопка для запуску перевірки
+button_pressed = st.button("Перевірити на AI", type="primary")
 
-        # calculate the ai percentage
-        ai_percentage = utils.check_ai_percentage(written_by_ai)
-        ai_score.metric(
-            label="AI",
-            value=str(ai_percentage * 100)[:4] + "%",
-            help="The percentage of the entire text that is written by AI",
-        )
+# --- Основна логіка: Завантаження моделей та запуск аналізу ---
 
-    # classify the text based on how many paragraphs are written by AI
-    if ai_percentage > 0.8:
-        ai_score.warning("The text is highly likely written by AI")
-    elif ai_percentage > 0.6:
-        ai_score.warning("The text is likely written by AI")
-    elif ai_percentage > 0.4:
-        ai_score.info("The text is may be written by AI")
-    elif ai_percentage > 0.2:
-        ai_score.success("The text is likely written by a human")
+# Завантажуємо всі файли. Функція тепер обробляє ZIP для CNN.
+download_models(PATHS)
+
+if button_pressed:
+    if not text_to_check.strip():
+        st.warning("Будь ласка, вставте текст для аналізу.")
     else:
-        ai_score.success("The text is most likely written by a human")
+        # Імпорт utils відбувається тут, щоб ініціалізація моделей була лінивою
+        with st.spinner("Ініціалізація моделей та бібліотек... (Перший запуск може зайняти до хвилини)"):
+            try:
+                # ВСТАНОВЛЕННЯ ШЛЯХІВ У СЕСІЮ ДЛЯ UTILS
+                st.session_state['SVM_MODEL_PATH'] = PATHS["svm_model"]
+                st.session_state['SVM_VECTORIZER_PATH'] = PATHS["tfidf_vectorizer"]
+                st.session_state['BERT_MODEL_PATH'] = PATHS["bert_binary"]
+                st.session_state['BERT_MULTICLASS_PATH'] = PATHS["bert_multiclass"]
+                # Шлях до директорії SavedModel
+                st.session_state['CNN_MODEL_PATH'] = PATHS["cnn_model_dir"] 
+                
+                import utils
+                
+                # Тепер utils доступний, і ми можемо його використовувати
+                no_cyrillic = not utils.has_cyrillic(text_to_check)
+                
+                # Перевірка на наявність кирилиці
+                if no_cyrillic:
+                    st.error("⚠️ Увага: Введений текст не містить кирилиці. Система оптимізована для української та російської мов. Результати для тексту англійською або іншою мовою можуть бути неточними.")
+                
+                # Запуск аналізу
+                results, multiclass_results = utils.run_analysis(text_to_check)
+                
+                # --- Виведення Результатів ---
+                st.header("📊 Зведений Результат Аналізу")
+                
+                # Створення колонок для зведення
+                col1, col2 = st.columns(2)
 
-    if check_paraphrase:
-        # generate the paraphrasing score
-        paraphrasing_score = utils.check_if_paraphrased_percentage(
-            is_paraphrased, paraphrase_threshold
-        )
+                with col1:
+                    st.subheader("Бінарна Класифікація (AI / Human)")
+                    for model_name, (is_ai, prob) in results.items():
+                        # Пропускаємо CNN, якщо вона не завантажилася
+                        if prob is None:
+                            continue
+                        
+                        st.metric(
+                            label=model_name,
+                            value="AI 🤖" if is_ai else "Людина ✍️",
+                            delta=f"Впевненість: {prob:.2f}%",
+                            # Використовуємо інверсний колір для AI
+                            delta_color="inverse" if is_ai else "normal"
+                        )
 
-        annotated_text_data = utils.generate_annotated_text(
-            splitted_text, written_by_ai, is_paraphrased, paraphrase_threshold
-        )
-        with text_annotation:
-            annotated_text(*annotated_text_data)
-        text_annotation.caption(
-            "Legend: A red dotted border indicates that the text is paraphrased"
-        )
-        paraphrased_score.metric(
-            label="Paraphrased",
-            value=f"{paraphrasing_score*100}"[:4] + "%"
-            if ai_percentage > 0.4
-            else "N/A",
-            help="The percentage of the entire text that is written by AI and paraphrased",
-        )
-        if ai_percentage > 0.4:
-            # classify the text based on how many paragraphs are AI paraphrased
-            if paraphrasing_score > 0.8:
-                paraphrased_score.warning(
-                    "The text is highly likely written by AI and paraphrased"
-                )
-            elif paraphrasing_score > 0.6:
-                paraphrased_score.warning(
-                    "The text is likely written by AI and paraphrased"
-                )
-            elif paraphrasing_score > 0.4:
-                paraphrased_score.info(
-                    "The text is may be written by AI and paraphrased"
-                )
-            elif paraphrasing_score > 0.2:
-                paraphrased_score.success(
-                    "The text is unlikely written by AI and paraphrased"
-                )
-        else:
-            paraphrased_score.success(
-                "The text is highly unlikely written by AI and paraphrased"
-            )
+                with col2:
+                    st.subheader("Багатокласова Класифікація (Multiclass BERT)")
+                    if multiclass_results:
+                        for label, prob in multiclass_results.items():
+                            st.metric(
+                                label=label,
+                                value=f"{prob:.2f}%",
+                                delta_color="off"
+                            )
+                    else:
+                        st.info("Результати багатокласової класифікації недоступні.")
 
-    if generate_explanation:
-        with st.spinner("Generating explanations..."):
-            html = utils.get_explaination(
-                text_to_check, number_of_features, model_selection
-            )
-            explanability._html(html, height=number_of_features * 45)
 
-elif button_pressed and no_cyrillic and version == versions[1]:
-    # utils вже імпортовано вище
-    with st.spinner("Predicting..."):
-        # check if the text is written by AI
-        written_by_ai, scores = utils.check_if_ai_short_text(text_to_check, threshold)
+                st.header("🔬 Детальний Аналіз")
 
-        if check_paraphrase:
-            is_paraphrased = utils.check_if_paraphrased_short_text(text_to_check)
+                with st.expander("Пояснення моделей"):
+                    st.markdown("""
+                    **SVM/TF-IDF:** Класична модель машинного навчання, яка базується на частоті слів та їхніх комбінацій. Швидка, але менш точна.  
+                    **BERT (Бінарний):** Модель глибокого навчання, налаштована для визначення, чи є текст AI-генерованим (ChatGPT/GPT-3).  
+                    **BERT (Багатокласовий):** Намагається визначити конкретного генератора (ChatGPT, GPT-3, T5, LLaMA).  
+                    **CNN/GLTR:** Навчалася на ознаках, пов'язаних з тим, як ШІ обирає наступне слово (GLTR). 
+                    """)
+                    
+                # Додамо елемент, щоб показати, що CNN не завантажилась
+                if 'cnn_error' in st.session_state:
+                    st.warning(f"Помилка при ініціалізації CNN/GLTR: {st.session_state['cnn_error']}")
 
-        # generate the chart
-        df = pd.DataFrame.from_dict(scores, orient="index")
-        fig = px.bar(
-            df,
-            orientation="h",
-            labels={"index": "Model", "value": "Probability"},
-            pattern_shape=df.index,
-            color=df.index,
-        )
-        chart.plotly_chart(fig, use_container_width=True)
 
-        # calculate the ai percentage
-        ai_percentage = 1 if written_by_ai == "AI" else 0
-        ai_score.metric(
-            label="AI",
-            value=str(ai_percentage * 100)[:4] + "%",
-            help="The percentage of the entire text that is written by AI",
-        )
-
-    # classify the text based on how many paragraphs are written by AI
-    if ai_percentage > 0.8:
-        ai_score.warning("The text is highly likely written by AI")
-    elif ai_percentage > 0.6:
-        ai_score.warning("The text is likely written by AI")
-    elif ai_percentage > 0.4:
-        ai_score.info("The text is may be written by AI")
-    elif ai_percentage > 0.2:
-        ai_score.success("The text is likely written by a human")
-    else:
-        ai_score.success("The text is most likely written by a human")
-
-    if check_paraphrase:
-        # generate the paraphrasing score
-        paraphrasing_score = is_paraphrased[2]
-        paraphrased_score.metric(
-            label="Paraphrased",
-            value=f"{paraphrasing_score*100}"[:4] + "%"
-            if ai_percentage >= 0.4
-            else "N/A",
-            help="The percentage of the entire text that is written by AI and paraphrased",
-        )
-        # only show the paraphrasing score if the text is written by AI
-        if ai_percentage >= 0.4:
-            # classify the text based on how many paragraphs are AI paraphrased
-            if paraphrasing_score > 0.8:
-                paraphrased_score.warning(
-                    "The text is highly likely written by AI and paraphrased"
-                )
-            elif paraphrasing_score > 0.6:
-                paraphrased_score.warning(
-                    "The text is likely written by AI and paraphrased"
-                )
-            elif paraphrasing_score > 0.4:
-                paraphrased_score.info(
-                    "The text is may be written by AI and paraphrased"
-                )
-            elif paraphrasing_score > 0.2:
-                paraphrased_score.success(
-                    "The text is unlikely written by AI and paraphrased"
-                )
-        else:
-            paraphrased_score.success(
-                "The text is highly unlikely written by AI and paraphrased"
-            )
-
-    if generate_explanation:
-        with st.spinner("Generating explanations..."):
-            html = utils.get_explaination(
-                text_to_check, number_of_features, model_selection
-            )
-            explanability._html(html, height=number_of_features * 45)
-
-elif button_pressed and not no_cyrillic:
-    st.error("The text contains cyrillic characters, which is not supported by Student hara-kiri")
-
-if reset_col.button("Reset"):
-    written_by_ai = False
-    button_pressed = False
-    no_cyrillic = False
+            except Exception as e:
+                st.error(f"❌ Сталася помилка під час аналізу. Спробуйте ще раз або перевірте введений текст.")
+                st.exception(e)
