@@ -194,7 +194,7 @@ if button_pressed:
     no_cyrillic = not utils.has_cyrillic(text_to_check)
 
 
-if button_pressed and not no_cyrillic and version == versions[0]:
+if button_pressed and no_cyrillic and version == versions[0]:
     # utils вже імпортовано вище
     with st.spinner("Predicting..."):
         # check if the text is written by AI
@@ -296,7 +296,7 @@ if button_pressed and not no_cyrillic and version == versions[0]:
             )
             explanability._html(html, height=number_of_features * 45)
 
-elif button_pressed and not no_cyrillic and version == versions[1]:
+elif button_pressed and no_cyrillic and version == versions[1]:
     # utils вже імпортовано вище
     with st.spinner("Predicting..."):
         # check if the text is written by AI
@@ -384,6 +384,3 @@ if reset_col.button("Reset"):
     written_by_ai = False
     button_pressed = False
     no_cyrillic = False
-
-elif button_pressed and no_cyrillic:
-    st.error("The text contains cyrillic characters, which is not supported by Student hara-kiri")
