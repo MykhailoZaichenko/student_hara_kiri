@@ -18,7 +18,7 @@ MODELS_DIR = './models'
 os.makedirs(MODELS_DIR, exist_ok=True)
 
 # !!! УВАГА: ЗАМІНІТЬ ЦЕЙ PLACEHOLDER НА РЕАЛЬНИЙ ID ВАШОГО ZIP-АРХІВУ CNN !!!
-CNN_MODEL_ZIP_ID = '1JZ7ttaRaY4dLC-VMUNMbh2uTMQHoWUvQ'
+CNN_MODEL_ZIP_ID = '1lLGHDE0o_aJyUOVbJ37fspImQRKKTrjA'
 CNN_MODEL_ZIP_FILENAME = "cnn_model.zip"
 
 # ID файлів моделей з Google Drive
@@ -49,7 +49,7 @@ def download_models(model_paths):
     cnn_zip_path = PATHS["cnn_zip"]
     cnn_zip_id = MODEL_IDS["cnn_zip"]
     
-    if not os.path.exists(cnn_target_dir) and cnn_zip_id != '1JZ7ttaRaY4dLC-VMUNMbh2uTMQHoWUvQ':
+    if not os.path.exists(cnn_target_dir) and cnn_zip_id != '1lLGHDE0o_aJyUOVbJ37fspImQRKKTrjA':
         with st.empty():
             st.info("Downloading CNN/GLTR model (SavedModel ZIP)...")
             try:
@@ -71,7 +71,7 @@ def download_models(model_paths):
                 st.error(f"Error processing CNN model (ZIP/Extraction): {e}. Check if the ZIP file contains the directory 'model_autokeras_gltr_trials_8'.")
                 st.session_state['cnn_error_setup'] = str(e)
                 # Ми не зупиняємо, щоб можна було перевірити інші моделі
-    elif cnn_zip_id == '1JZ7ttaRaY4dLC-VMUNMbh2uTMQHoWUvQ':
+    elif cnn_zip_id == '1lLGHDE0o_aJyUOVbJ37fspImQRKKTrjA':
         st.warning("Будь ласка, оновіть App.py з реальним Google Drive ID для моделі CNN.")
 
     
