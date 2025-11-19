@@ -47,11 +47,11 @@ def get_model_from_drive(file_id, output_path, is_pickle=True):
     
     # 2. Завантаження, якщо файл відсутній
     if not os.path.exists(output_path):
-        st.info(f"Downloading model {os.path.basename(output_path)}...")
+        # st.info(f"Downloading model {os.path.basename(output_path)}...")
         try:
             url = f'https://drive.google.com/uc?id={file_id}'
             gdown.download(url, output_path, quiet=False)
-            st.success("Model file downloaded.")
+            # st.success("Model file downloaded.")
         except Exception as e:
             st.error(f"Failed to download model from Google Drive: {e}")
             return None # Повертаємо None у разі помилки
