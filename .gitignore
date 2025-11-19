@@ -5,3 +5,5 @@ svm_linear_model_100000_features.pkl
 model_multiclass.pt
 model_bertbase_updated.pt
 *.pdf
+svm_linear_model_90000_features_probability.pkl
+tfidf_vectorizer_90000_features.pkl

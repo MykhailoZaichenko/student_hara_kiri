@@ -1,8 +1,8 @@
 import streamlit as st
 import gdown
 import os
-# Необхідний імпорт для роботи з архівами
 import zipfile 
+# Моделі тепер будуть завантажені у `utils` одразу при імпорті.
 
 # --- Налаштування сторінки ---
 st.set_page_config(
@@ -13,13 +13,14 @@ st.set_page_config(
 )
 
 # --- Налаштування шляхів та ID ---
-# Шляхи до моделей (використовуємо один і той самий каталог)
 MODELS_DIR = './models'
 os.makedirs(MODELS_DIR, exist_ok=True)
 
 # !!! УВАГА: ЗАМІНІТЬ ЦЕЙ PLACEHOLDER НА РЕАЛЬНИЙ ID ВАШОГО ZIP-АРХІВУ CNN !!!
+# Якщо ви не заміните цей ID, модель CNN не буде завантажена.
 CNN_MODEL_ZIP_ID = '1lLGHDE0o_aJyUOVbJ37fspImQRKKTrjA'
 CNN_MODEL_ZIP_FILENAME = "cnn_model.zip"
+SAVED_MODEL_FILE = 'saved_model.pb' # Ключовий файл для Keras
 
 # ID файлів моделей з Google Drive
 MODEL_IDS = {
@@ -30,64 +31,113 @@ MODEL_IDS = {
     "cnn_zip": CNN_MODEL_ZIP_ID, # ID для ZIP-файлу моделі CNN
 }
 
-# Шляхи до файлів
+# Шляхи до файлів (використовуємо лише для завантаження, шлях до CNN буде знайдено динамічно)
 PATHS = {
     "svm_model": os.path.join(MODELS_DIR, "svm_linear_model_90000_features_probability.pkl"),
     "tfidf_vectorizer": os.path.join(MODELS_DIR, "tfidf_vectorizer_90000_features.pkl"),
     "bert_binary": os.path.join(MODELS_DIR, "model_bertbase_updated.pt"),
     "bert_multiclass": os.path.join(MODELS_DIR, "model_multiclass.pt"),
     "cnn_zip": os.path.join(MODELS_DIR, CNN_MODEL_ZIP_FILENAME),
-    "cnn_model_dir": os.path.join(MODELS_DIR, "model_autokeras_gltr_trials_8"), # Кінцевий шлях для CNN
+    "cnn_model_dir": None, # Цей шлях буде визначено динамічно після розпакування
 }
 
-# --- Функція для завантаження файлів моделей ---
+
+# --- Функція для завантаження файлів моделей (виконується один раз при старті) ---
 def download_models(model_paths):
     """Завантажує файли моделей з Google Drive, якщо вони відсутні."""
     
-    # Спочатку завантажуємо та обробляємо CNN SavedModel (ZIP)
-    cnn_target_dir = PATHS["cnn_model_dir"]
-    cnn_zip_path = PATHS["cnn_zip"]
+    # Спеціальна обробка для CNN SavedModel (ZIP)
+    cnn_zip_path = model_paths["cnn_zip"]
     cnn_zip_id = MODEL_IDS["cnn_zip"]
     
-    if not os.path.exists(cnn_target_dir) and cnn_zip_id != '1lLGHDE0o_aJyUOVbJ37fspImQRKKTrjA':
-        with st.empty():
-            st.info("Downloading CNN/GLTR model (SavedModel ZIP)...")
+    # Крок 1: Перевірка, чи не знайдена модель вже була раніше (для кешування)
+    final_cnn_path = None
+    for root, dirs, files in os.walk(MODELS_DIR):
+        if SAVED_MODEL_FILE in files:
+            final_cnn_path = root
+            break
+            
+    if final_cnn_path:
+        # Модель вже завантажена та знайдена, пропускаємо завантаження
+        st.success(f"CNN/GLTR model found and ready at: {final_cnn_path}!")
+        model_paths["cnn_model_dir"] = final_cnn_path
+        
+    elif cnn_zip_id != '1lLGHDE0o_aJyUOVbJ37fspImQRKKTrjA':
+        # Якщо модель не знайдена і ID встановлено, спробуємо завантажити
+        with st.spinner("Downloading and setting up CNN/GLTR model (SavedModel ZIP)..."):
             try:
                 # 1. Завантаження ZIP
-                gdown.download(f'https://drive.google.com/uc?id={cnn_zip_id}', cnn_zip_path, quiet=False)
-                st.success("CNN ZIP downloaded successfully. Starting extraction...")
+                # gdown.download повертає шлях, якщо успішно
+                result_path = gdown.download(f'https://drive.google.com/uc?id={cnn_zip_id}', cnn_zip_path, quiet=False)
+                
+                if not result_path:
+                    # Якщо gdown не повернув шлях, завантаження не відбулося
+                    raise Exception("gdown failed to download the file. Check the Google Drive ID and file permissions (must be 'Anyone with the link').")
+                    
+                st.info("CNN ZIP downloaded successfully. Starting extraction...")
                 
                 # 2. Розпакування
                 with zipfile.ZipFile(cnn_zip_path, 'r') as zip_ref:
-                    # Розпаковуємо безпосередньо в каталог models, 
-                    # припускаючи, що cnn_model.zip містить папку model_autokeras_gltr_trials_8
+                    # Розпаковуємо безпосередньо в каталог models.
                     zip_ref.extractall(MODELS_DIR) 
                 
-                # 3. Видалення ZIP-файлу
+                # 3. Рекурсивний пошук коректного шляху для Keras (SavedModel)
+                found_keras_path = None
+                for root, dirs, files in os.walk(MODELS_DIR):
+                    if SAVED_MODEL_FILE in files:
+                        found_keras_path = root
+                        break
+                
+                if found_keras_path:
+                    # Присвоюємо знайдений шлях
+                    model_paths["cnn_model_dir"] = found_keras_path
+                    st.success(f"CNN/GLTR model extracted and ready at: {found_keras_path}!")
+                else:
+                    # Якщо файл SavedModel не знайдено, це серйозна помилка
+                    raise FileNotFoundError(f"Cannot find '{SAVED_MODEL_FILE}' inside the extracted ZIP content in {MODELS_DIR}. Check ZIP file structure.")
+
+                # 4. Видалення ZIP-файлу
                 os.remove(cnn_zip_path)
-                st.success(f"CNN/GLTR model extracted and ready at {cnn_target_dir}!")
                 
             except Exception as e:
-                st.error(f"Error processing CNN model (ZIP/Extraction): {e}. Check if the ZIP file contains the directory 'model_autokeras_gltr_trials_8'.")
+                # Виводимо детальну помилку, якщо щось пішло не так
+                st.error(f"❌ FATAL ERROR: Помилка обробки CNN моделі. Перевірте ID та доступ до Google Drive. Деталі: {e}")
                 st.session_state['cnn_error_setup'] = str(e)
-                # Ми не зупиняємо, щоб можна було перевірити інші моделі
-    elif cnn_zip_id == '1lLGHDE0o_aJyUOVbJ37fspImQRKKTrjA':
-        st.warning("Будь ласка, оновіть App.py з реальним Google Drive ID для моделі CNN.")
 
-    
-    # Тепер завантажуємо інші, поодинокі файли
+    elif cnn_zip_id == '1lLGHDE0o_aJyUOVbJ37fspImQRKKTrjA':
+        # Випадок, коли ID не замінено
+        st.error("🚨 ВАЖЛИВО: ID моделі CNN не встановлено. Будь ласка, замініть '1lLGHDE0o_aJyUOVbJ37fspImQRKKTrjA' на реальний ID Google Drive в App.py. Модель CNN буде недоступна.")
+
+
+    # Завантажуємо інші, поодинокі файли (як і раніше)
     for key in ["svm_model", "tfidf_vectorizer", "bert_binary", "bert_multiclass"]:
         path = model_paths[key]
         if key in MODEL_IDS and not os.path.exists(path):
-            with st.empty():
+            with st.spinner(f"Downloading {key}..."):
                 try:
-                    st.info(f"Downloading {key}...")
                     gdown.download(f'https://drive.google.com/uc?id={MODEL_IDS[key]}', path, quiet=False)
                     st.success(f"{key} downloaded successfully!")
                 except Exception as e:
                     st.error(f"Error downloading {key}: {e}")
                     st.session_state[f'{key}_error_setup'] = str(e)
 
+
+# --- ФАЗА 1: ЗАВАНТАЖЕННЯ ФАЙЛІВ ПРИ СТАРТІ ЗАСТОСУНКУ ---
+download_models(PATHS)
+
+# ВСТАНОВЛЕННЯ ШЛЯХІВ У СЕСІЮ ДЛЯ UTILS
+st.session_state['SVM_MODEL_PATH'] = PATHS["svm_model"]
+st.session_state['SVM_VECTORIZER_PATH'] = PATHS["tfidf_vectorizer"]
+st.session_state['BERT_MODEL_PATH'] = PATHS["bert_binary"]
+st.session_state['BERT_MULTICLASS_PATH'] = PATHS["bert_multiclass"]
+# Передаємо динамічно знайдений шлях (або None, якщо завантаження не вдалося)
+st.session_state['CNN_MODEL_PATH'] = PATHS["cnn_model_dir"] 
+
+# --- ФАЗА 2: ІМПОРТ UTILS І ІНІЦІАЛІЗАЦІЯ МОДЕЛЕЙ ---
+# Моделі ініціалізуються (і кешуються Streamlit) в utils.py одразу при імпорті.
+with st.spinner("Ініціалізація моделей та бібліотек... (Виконується лише при першому запуску)"):
+    import utils
+    
 # --- UI ---
 st.title("🔎 Мультимодельний Детектор Тексту, Згенерованого Штучним Інтелектом (AI)")
 
@@ -103,29 +153,16 @@ st.caption("Система перевіряє текст на оригіналь
 # Кнопка для запуску перевірки
 button_pressed = st.button("Перевірити на AI", type="primary")
 
-# --- Основна логіка: Завантаження моделей та запуск аналізу ---
-
-# Завантажуємо всі файли. Функція тепер обробляє ZIP для CNN.
-download_models(PATHS)
+# --- Основна логіка: Запуск аналізу ---
 
 if button_pressed:
     if not text_to_check.strip():
         st.warning("Будь ласка, вставте текст для аналізу.")
     else:
-        # Імпорт utils відбувається тут, щоб ініціалізація моделей була лінивою
-        with st.spinner("Ініціалізація моделей та бібліотек... (Перший запуск може зайняти до хвилини)"):
+        # Аналіз тепер буде миттєвим, оскільки моделі вже ініціалізовані
+        with st.spinner("Виконання аналізу..."):
             try:
-                # ВСТАНОВЛЕННЯ ШЛЯХІВ У СЕСІЮ ДЛЯ UTILS
-                st.session_state['SVM_MODEL_PATH'] = PATHS["svm_model"]
-                st.session_state['SVM_VECTORIZER_PATH'] = PATHS["tfidf_vectorizer"]
-                st.session_state['BERT_MODEL_PATH'] = PATHS["bert_binary"]
-                st.session_state['BERT_MULTICLASS_PATH'] = PATHS["bert_multiclass"]
-                # Шлях до директорії SavedModel
-                st.session_state['CNN_MODEL_PATH'] = PATHS["cnn_model_dir"] 
                 
-                import utils
-                
-                # Тепер utils доступний, і ми можемо його використовувати
                 no_cyrillic = not utils.has_cyrillic(text_to_check)
                 
                 # Перевірка на наявність кирилиці
@@ -182,7 +219,6 @@ if button_pressed:
                 # Додамо елемент, щоб показати, що CNN не завантажилась
                 if 'cnn_error' in st.session_state:
                     st.warning(f"Помилка при ініціалізації CNN/GLTR: {st.session_state['cnn_error']}")
-
 
             except Exception as e:
                 st.error(f"❌ Сталася помилка під час аналізу. Спробуйте ще раз або перевірте введений текст.")
