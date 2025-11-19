@@ -1,5 +1,5 @@
 import streamlit as st
-import utils
+# import utils  <-- ПРИБРАЛИ ЗВІДСИ
 import constants
 from annotated_text import annotated_text
 
@@ -30,11 +30,17 @@ text_to_check = predictor.text_area(
 written_by_ai = False
 no_cyrillic = False
 check_col, reset_col = predictor.columns(2)
-with st.spinner('Predicting...'):
-    button_pressed = check_col.button(
-        'Check if written by AI', disabled=len(text_to_check) == 0, type='primary')
 
+# Кнопка сама по собі не потребує спіннера, він потрібен при виконанні дії
+button_pressed = check_col.button(
+    'Check if written by AI', disabled=len(text_to_check) == 0, type='primary')
+
+# --- ЛІНИВЕ ЗАВАНТАЖЕННЯ ---
 if button_pressed:
+    with st.spinner("Initializing models... (First run may take a while)"):
+        import utils
+    
+    # Тепер utils доступний
     no_cyrillic = not utils.has_cyrillic(text_to_check)
 
 if button_pressed and no_cyrillic and version == versions[0]:
