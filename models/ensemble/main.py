@@ -4,25 +4,42 @@ import pandas as pd
 from classifiers.BertBaseClassifier import BertBaseClassifier
 from classifiers.SvmTfidfBaseClassifier import SvmTfidfBaseClassifier
 from classifiers.KerasModelClassifier import CNNGLTRClassifier
-from ensemble.Ensemble import Ensemble
+from models.ensemble.Ensemble import Ensemble # Виправлено імпорт на models.ensemble.Ensemble
+
+# Константи шляхів, які використовувалися в utils (для консистентності)
+SVM_MODEL_PATH = "models/svm_linear_model_90000_features_probability.pkl"
+SVM_VECTORIZER_PATH = "models/tfidf_vectorizer_90000_features.pkl"
+BERT_MODEL_PATH = "models/model_bertbase_updated.pt"
+CNN_MODEL_PATH = "models/model_autokeras_gltr" # Припускаємо, що це папка
 
 def predict(text):
     text_lst = [text]
     sample_df = pd.DataFrame(text_lst, columns=['response'])
 
-    #Initialise models -- Adjust path accordingly
-    bert = BertBaseClassifier("model_bertbase_updated.pt")
-    svm_tfidf_classifier = SvmTfidfBaseClassifier("svm_rbf_model_no_gltr.pkl", "tfidf_vectorizer.pkl")
-    #Make sure you have the automodel file loaded locally as well
-    cnn = CNNGLTRClassifier("model_autokeras_gltr")
-    #Initialise ensemble
+    # Initialise models -- Adjust path accordingly
+    bert = BertBaseClassifier(BERT_MODEL_PATH)
+    # Змінено: Використовуємо SvmTfidfBaseClassifierV2, якщо це потрібно, або використовуємо 
+    # SvmTfidfBaseClassifier з коректними шляхами для цієї версії.
+    # Оскільки у вас був старий SvmTfidfBaseClassifier, я залишаю його, але використовую нові шляхи.
+    svm_tfidf_classifier = SvmTfidfBaseClassifier(SVM_MODEL_PATH, SVM_VECTORIZER_PATH) 
+    
+    # Make sure you have the automodel file loaded locally as well
+    cnn = CNNGLTRClassifier(CNN_MODEL_PATH)
+    
+    # Initialise ensemble
     models = [bert, svm_tfidf_classifier]
     ensemble = Ensemble(models, ["BERT","CNN","SVM"])
 
-    #pred is an output "AI" or "Human" and output_dict shows what prediction each model made
+    # pred is an output "AI" or "Human" and output_dict shows what prediction each model made
     threshold = 0.6
     weights = np.array([0.25, 0.25,0.5])
-    pred,  output_dict = ensemble.predict(sample_df, weights, threshold)
+    
+    # Process input before prediction
+    # Примітка: тут може знадобитися GLTRTransformer, який ви використовуєте в Utils.py
+    # Якщо ви використовуєте main.py незалежно, то тут потрібен pipeline.
+    # Але для прикладу залишимо як є, якщо логіка обробки даних була в utils.
+    
+    pred, output_dict = ensemble.predict(sample_df, weights, threshold)
 
     print(pred)
     print(output_dict)

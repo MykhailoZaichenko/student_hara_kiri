@@ -6,17 +6,30 @@ from sklearn.base import BaseEstimator, ClassifierMixin
 from models import Bert
 from transformers import BertTokenizer, BertModel
 import torch
-
 import pandas as pd
+import os
+import sys
 
+# Додаємо кореневу папку в шлях, щоб знайти utils та завантажити модель, якщо вона не завантажена
+# Це може бути не потрібно, якщо initialize_models() вже виконано в Utils.py, 
+# але це забезпечить наявність файлу перед його використанням.
+# Оскільки ми вже викликали initialize_models() в Utils.py, ми просто використовуємо шлях `path`.
 
 class BertBaseMultiClassifier(BaseEstimator, ClassifierMixin):
     BERT_MODEL = 'bert-base-cased'
 
-    def __init__(self, path='./model_multiclass.pt'):
+    def __init__(self, path='./models/model_multiclass.pt'):
+        # Перевіряємо, чи файл існує (він має бути завантажений через utils.initialize_models())
+        if not os.path.exists(path):
+            # Якщо файл відсутній, це означає, що initialize_models() не спрацював або щось пішло не так.
+            # Якщо це відбувається, можливо, потрібно перевірити шлях або логіку.
+            print(f"Error: Model file not found at {path}. Check utils.initialize_models() logic.")
+        
         self.bert = BertModel.from_pretrained(self.BERT_MODEL)
         self.tokenizer = BertTokenizer.from_pretrained(self.BERT_MODEL)
         self.model = Bert.MBERT(self.bert)
+        
+        # Використовуємо `path` для завантаження
         self.model.load_state_dict(torch.load(
             path, map_location=torch.device('cpu'))['model_state_dict'])
 
@@ -37,5 +50,6 @@ class BertBaseMultiClassifier(BaseEstimator, ClassifierMixin):
 if __name__ == "__main__":
     ds = pd.read_csv('Holdout_Final.csv')[:10]
 
-    classifier = BertBaseMultiClassifier('model_multiclass.pt')
+    # Шлях тут має бути коректним для локального тестування
+    classifier = BertBaseMultiClassifier('models/model_multiclass.pt') 
     print(classifier.predict(ds))

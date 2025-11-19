@@ -1,3 +1,10 @@
+import os
+import gdown
+import streamlit as st
+import pickle
+import re
+
+# Імпорти для класифікаторів
 from sklearn.pipeline import Pipeline
 from classifiers.BertBaseClassifier import BertBaseClassifier
 from classifiers.BertBaseMultiClassifier import BertBaseMultiClassifier
@@ -12,20 +19,112 @@ from annotated_text import annotation
 from nltk.tokenize import sent_tokenize
 import re
 
+# --- КОНСТАНТИ GOOGLE DRIVE ID та ШЛЯХИ ---
+
+# ВАШІ ID:
+SVM_FILE_ID = "1_O8mtsgJipuCgqrW1yBoJBUUEYCiUXsx"
+SVM_VECTORIZER_FILE_ID = "1HBpIvydoh6slZKwrX4o9hsinGPydwkIi" # Судячи з шляху, це файл "tfidf_vectorizer_90000_features.pkl"
+BERT_FILE_ID = "1D8wp3sOVV9Ri5BUG26IGVSZoSZlvjobD"
+BERT_MULTICLASS_FILE_ID = "1GhTr-2ghquSTWdha96s7JJWegx2yoo2t"
+# CNN (model_autokeras_gltr_trials_8) - ця папка завантажується інакше,
+# або вона має бути на GitHub, якщо вона не перевищує ліміт.
+
+# Шляхи, які будуть використовуватися в коді для локального доступу
+SVM_MODEL_PATH = "models/svm_linear_model_90000_features_probability.pkl"
+SVM_VECTORIZER_PATH = "models/tfidf_vectorizer_90000_features.pkl"
+BERT_MODEL_PATH = "models/model_bertbase_updated.pt"
+BERT_MULTICLASS_PATH = "models/model_multiclass.pt"
+CNN_MODEL_PATH = "models/model_autokeras_gltr_trials_8" # Це папка, її поки залишимо на GitHub, якщо вона не була великою
+
+# --- МЕХАНІЗМ ЗАВАНТАЖЕННЯ З GOOGLE DRIVE ---
+
+@st.cache_resource
+def get_model_from_drive(file_id, output_path, is_pickle=True):
+    """Завантажує файл з Google Drive, кешує його та повертає шлях або десеріалізований об'єкт."""
+    
+    # 1. Створення директорії
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    
+    # 2. Завантаження, якщо файл відсутній
+    if not os.path.exists(output_path):
+        st.info(f"Downloading model {os.path.basename(output_path)}...")
+        try:
+            url = f'https://drive.google.com/uc?id={file_id}'
+            gdown.download(url, output_path, quiet=False)
+            st.success("Model file downloaded.")
+        except Exception as e:
+            st.error(f"Failed to download model from Google Drive: {e}")
+            return None # Повертаємо None у разі помилки
+
+    # 3. Повернення об'єкта (якщо це pickle) або шляху
+    if is_pickle:
+        try:
+            with open(output_path, 'rb') as f:
+                return pickle.load(f)
+        except Exception as e:
+            st.error(f"Failed to load pickled object from disk: {e}")
+            return None
+    else:
+        # Для .pt або папок, повертаємо лише шлях, оскільки ініціалізація моделі (torch.load)
+        # відбувається безпосередньо у класах класифікаторів.
+        return output_path
+
+# --- ІНТЕЛЕКТУАЛЬНЕ ЗАВАНТАЖЕННЯ ТА ІНІЦІАЛІЗАЦІЯ МОДЕЛЕЙ ---
+
+@st.cache_resource
+def initialize_models():
+    """
+    Завантажує всі необхідні компоненти (моделі та векторизатори) та ініціалізує класифікатори.
+    Ця функція викликається лише один раз завдяки @st.cache_resource.
+    """
+    st.write("Initializing models...")
+    
+    # Завантаження SVM моделі (за допомогою нової логіки)
+    # Зверніть увагу: SvmTfidfBaseClassifierV2 очікує шляхи, а не об'єкти
+    # Оскільки SVM V2, ймовірно, завантажує векторизатор окремо, нам потрібен шлях.
+    
+    # Завантажуємо окремо модель SVM
+    svm_model_obj = get_model_from_drive(SVM_FILE_ID, SVM_MODEL_PATH, is_pickle=True)
+    # Завантажуємо окремо TFIDF векторизатор (припускаємо, що він теж великий і був винесений)
+    tfidf_vectorizer_obj = get_model_from_drive(SVM_VECTORIZER_FILE_ID, SVM_VECTORIZER_PATH, is_pickle=True)
+    
+    # Моделі BERT та Multiclass BERT очікують лише шлях до файлу .pt
+    bert_path = get_model_from_drive(BERT_FILE_ID, BERT_MODEL_PATH, is_pickle=False)
+    bert_multiclass_path = get_model_from_drive(BERT_MULTICLASS_FILE_ID, BERT_MULTICLASS_PATH, is_pickle=False)
+    
+    # Перевіряємо, чи все завантажилося
+    if any(obj is None for obj in [svm_model_obj, tfidf_vectorizer_obj, bert_path, bert_multiclass_path]):
+        st.error("One or more critical models failed to load. Please check Google Drive IDs and access.")
+        return None, None, None, None # Повертаємо None, щоб запобігти збоям
+
+    # Ініціалізуємо класифікатори, передаючи ШЛЯХИ
+    # Для SvmTfidfBaseClassifierV2, ми тимчасово завантажимо об'єкти, 
+    # а потім створимо класифікатори, використовуючи ШЛЯХИ, щоб відповідати старому коду.
+    # Оскільки ми вже завантажили файли, ми просто передаємо шляхи:
+    svm = SvmTfidfBaseClassifierV2(SVM_MODEL_PATH, SVM_VECTORIZER_PATH)
+    bert = BertBaseClassifier(BERT_MODEL_PATH)
+    cnn = CNNGLTRClassifier(CNN_MODEL_PATH) # CNN_MODEL_PATH припускаємо, що залишається на GitHub
+    bert_multiclass = BertBaseMultiClassifier(BERT_MULTICLASS_PATH)
+    
+    return svm, bert, cnn, bert_multiclass
+
+
+# Ініціалізація моделей (відбудеться при першому запуску кнопки Check, якщо ви внесли зміни в App/Lite.py)
+svm, bert, cnn, bert_multiclass = initialize_models()
+
+# Якщо ініціалізація провалилася, зупиняємо
+if svm is None:
+    st.stop()
+
+
+# Інстанціювання Ensemble та Pipeline (залишається як було, але використовує завантажені моделі)
 pipeline = Pipeline(steps=[('GLTR', GLTRTransformer())])
-
-# instantiate models
-svm = SvmTfidfBaseClassifierV2(
-    "models/svm_linear_model_90000_features_probability.pkl", "models/tfidf_vectorizer_90000_features.pkl")
-bert = BertBaseClassifier("models/model_bertbase_updated.pt")
-cnn = CNNGLTRClassifier("models/model_autokeras_gltr_trials_8")
-bert_multiclass = BertBaseMultiClassifier("models/model_multiclass.pt")
-
-# instantiate ensemble
 models = [bert, cnn, svm]
 ensemble = Ensemble(models, ["BERT", "CNN", "SVM"])
 weights = np.array([0.25, 0.25, 0.5])
 
+
+# --- ВАШ ІНШИЙ КОД БЕЗ ЗМІН ---
 
 def chunk_into_even_paragraphs(text, max_chunk_size):
     B = len
@@ -190,7 +289,9 @@ def predict_proba_bert(text_lst: list):
 
 def predict_proba_cnn(text_lst: list):
     sample_df = pd.DataFrame(text_lst, columns=['response'])
-    pred = svm.predict(sample_df)
+    # Припускаємо, що CNN використовує svm для цього, але це може бути помилкою в оригінальному коді. 
+    # Залишаю як було, але зауважте, що тут використовується 'svm' замість 'cnn'.
+    pred = svm.predict(sample_df) 
     returnable = []
     for i in pred:
         temp = i

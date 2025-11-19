@@ -7,6 +7,7 @@ attrs==22.2.0
 autokeras==1.1.0
 autopep8==2.0.2
 backcall==0.2.0
+beautifulsoup4==4.14.2
 blinker==1.5
 cachetools==5.3.0
 certifi==2022.12.7
@@ -28,6 +29,7 @@ filelock==3.11.0
 flatbuffers==23.3.3
 fonttools==4.39.3
 gast==0.4.0
+gdown==5.2.0
 gensim==4.3.1
 gitdb==4.0.10
 GitPython==3.1.31
@@ -82,7 +84,7 @@ Pillow==9.5.0
 platformdirs==3.2.0
 plotly==5.14.1
 prompt-toolkit==3.0.38
-protobuf==3.19.6
+protobuf==3.20.3
 psutil==5.9.4
 pure-eval==0.2.2
 pyarrow==11.0.0
@@ -94,6 +96,7 @@ Pygments==2.14.0
 Pympler==1.0.1
 pyparsing==3.0.9
 pyrsistent==0.19.3
+PySocks==1.7.1
 python-dateutil==2.8.2
 pytz==2023.3
 pytz-deprecation-shim==0.1.0.post0
@@ -112,10 +115,11 @@ six==1.16.0
 slicer==0.0.7
 smart-open==6.3.0
 smmap==5.0.0
+soupsieve==2.8
 sqlparse==0.5.3
 st-annotated-text==4.0.0
 stack-data==0.6.2
-streamlit==1.17.0
+streamlit==1.18.0
 sympy==1.11.1
 tenacity==8.2.2
 tensorboard==2.10.1
@@ -138,7 +142,7 @@ tornado==6.2
 tqdm==4.65.0
 traitlets==5.9.0
 transformers==4.27.4
-typing_extensions>=4.6.0
+typing_extensions==4.5.0
 tzdata==2023.3
 tzlocal==4.3
 urllib3==1.26.15
