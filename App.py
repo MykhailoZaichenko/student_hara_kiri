@@ -5,6 +5,8 @@ import gdown
 import plotly.express as px
 from annotated_text import annotated_text
 
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+
 st.set_page_config(page_title="Student hara-kiri", page_icon="👨‍🎓")
 
 # --- Налаштування шляхів та ID ---
