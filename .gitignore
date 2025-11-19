@@ -1,3 +1,4 @@
+__pycache__
 venv
 *.pyc 
 svm_linear_model_100000_features.pkl
