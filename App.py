@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-import utils
+# import utils  <-- ПРИБРАЛИ ЗВІДСИ, ЩОБ НЕ БЛОКУВАТИ СТАРТ
 import constants
 import plotly.express as px
 from annotated_text import annotated_text
@@ -71,11 +71,19 @@ button_pressed = check_col.button(
     "Check if written by AI", disabled=len(text_to_check) == 0, type="primary"
 )
 
+# --- ЛІНИВЕ ЗАВАНТАЖЕННЯ ---
+# Ми імпортуємо utils тільки ТУТ, після натискання кнопки.
+# Це дозволяє додатку запуститися миттєво, не чекаючи завантаження моделей TensorFlow/BERT.
 if button_pressed:
+    with st.spinner("Initializing models and libraries... (First run may take a while)"):
+        import utils 
+    
+    # Тепер utils доступний, і ми можемо його використовувати
     no_cyrillic = not utils.has_cyrillic(text_to_check)
 
 
 if button_pressed and no_cyrillic and version == versions[0]:
+    # utils вже імпортовано вище
     with st.spinner("Predicting..."):
         # check if the text is written by AI
         written_by_ai, scores, splitted_text = utils.check_if_ai(
@@ -177,6 +185,7 @@ if button_pressed and no_cyrillic and version == versions[0]:
             explanability._html(html, height=number_of_features * 45)
 
 elif button_pressed and no_cyrillic and version == versions[1]:
+    # utils вже імпортовано вище
     with st.spinner("Predicting..."):
         # check if the text is written by AI
         written_by_ai, scores = utils.check_if_ai_short_text(text_to_check, threshold)
